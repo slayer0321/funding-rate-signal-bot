@@ -101,10 +101,16 @@ def fetch_funding_rates():
         data = r.json()
         # Parse funding rates from response
         rates = {}
-        for item in data:
-            coin = item.get("coin", "")
-            if coin in ASSETS:
-                rates[coin] = float(item.get("fundingRate", 0))
+        if isinstance(data, list):
+            for item in data:
+                coin = item.get("coin", "")
+                if coin in ASSETS:
+                    rates[coin] = float(item.get("fundingRate", 0))
+        elif isinstance(data, dict):
+            # Try alternative format
+            for asset in ASSETS:
+                if asset in data:
+                    rates[asset] = float(data[asset])
         return rates
     except Exception as e:
         print(f"❌ Error fetching funding rates: {e}")
@@ -182,7 +188,7 @@ def send_discord_alert(asset, funding_rate, analysis, direction, price=None):
             ),
             "color": color,
             "timestamp": datetime.utcnow().isoformat() + "Z",
-            "footer": {"text": f"Hyperliquid • {LLM_PROVIDER.upper()} AI Analysis"}
+            "footer": {"text": "Hyperliquid • AI Analysis"}
         }]
     }
     
@@ -192,6 +198,16 @@ def send_discord_alert(asset, funding_rate, analysis, direction, price=None):
         print(f"✅ Discord alert sent for {asset}")
         return True
     except Exception as e:
+        if not DISCORD_WEBHOOK:
+            # Print to terminal when no webhook configured
+            print(f"\n{'='*50}")
+            print(f"🚨 {asset} FUNDING RATE ALERT")
+            print(f"{'='*50}")
+            print(f"Rate: {funding_rate:.6f} ({funding_rate*100:.4f}%){price_str}")
+            print(f"\nAI Analysis:")
+            print(f"{analysis}")
+            print(f"{'='*50}\n")
+            return True
         print(f"❌ Discord error: {e}")
         return False
 
@@ -362,12 +378,12 @@ Examples:
             print(f"🔧 Using provider: {LLM_PROVIDER}")
     
     # Validate config
-    if not DISCORD_WEBHOOK:
-        print("❌ DISCORD_WEBHOOK_URL not set in .env")
-        return
     if not LLM_API_KEY:
         print(f"❌ LLM_API_KEY not set in .env")
         return
+    
+    if not DISCORD_WEBHOOK:
+        print("⚠️  DISCORD_WEBHOOK_URL not set — alerts will print to terminal only")
     
     # Route to appropriate mode
     if args.summary:
